@@ -127,6 +127,12 @@ export async function getArxivBibtex(arxivId: string) {
     return bibtexText;
 }
 
+export function getCiteKey(bibtex:string) {
+    const match = bibtex.match(/@.*\{([^,]+)/);
+    return match ? match[1] : null;
+}
+
+
 export default class PaperNoteFillerPlugin extends Plugin {
 	settings: PaperNoteFillerPluginSettings;
 
@@ -279,7 +285,13 @@ class urlModal extends Modal {
 		
 		// Replace for pdf file 
 		template = template.replace(/{{pdf}}/g, paperData.pdfPath ? `[[${paperData.pdfPath}]]`: "");
-		
+	
+		let citeKey = paperData.bibtex ? getCiteKey(paperData.bibtex) : null;
+		if (citeKey) {
+			// we perhaps should keep the citekey in the template when 
+			// the the bibtex is not available
+			template = template.replace(/{{citekey}}/g, citeKey);
+		}
 		return template;
 	}
 
