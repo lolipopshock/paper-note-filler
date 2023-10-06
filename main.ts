@@ -7,6 +7,7 @@ import {
 	Setting,
 	TFile,
 	requestUrl,
+	request,
 } from "obsidian";
 
 import { stopwords } from "./english-stopwords";
@@ -22,12 +23,6 @@ const NAMING_TYPES: string[] = [
 	"all-title-terms",
 ];
 
-const DEFAULT_SETTINGS: PaperNoteFillerPluginSettings = {
-	folderLocation: "",
-	fileNaming: NAMING_TYPES[0],
-	templateLocation: "",
-	pdfDownloadLocation: "",
-};
 
 //create a string map for all the strings we need
 const STRING_MAP: Map<string, string> = new Map([
@@ -43,6 +38,7 @@ const STRING_MAP: Map<string, string> = new Map([
 	["commandName", "Create paper note from URL."],
 	["inputLabel1", "Enter a valid URL."],
 	["inputLabel2", "Here are some examples: "],
+	["arXivBibTexAPI", "https://arxiv.org/bibtex/"],
 	["arXivRestAPI", "https://export.arxiv.org/api/query?id_list="],
 	["aclAnthologyUrlExample", "https://aclanthology.org/2022.acl-long.1/"],
 	["arXivUrlExample", "https://arxiv.org/abs/0000.00000"],
@@ -50,7 +46,7 @@ const STRING_MAP: Map<string, string> = new Map([
 	["inputPlaceholder", "https://my-url.com"],
 	["arxivUrlSuffix", "arXiv:"],
 	["aclAnthologyUrlSuffix", "ACL:"],
-	["semanticScholarFields", "fields=authors,title,abstract,url,venue,year,publicationDate,externalIds,isOpenAccess,openAccessPdf"],
+	["semanticScholarFields", "fields=authors,title,abstract,url,venue,year,publicationDate,externalIds,isOpenAccess,openAccessPdf,citationStyles"],
 	["semanticScholarAPI", "https://api.semanticscholar.org/graph/v1/paper/"],
 	["settingHeader", "Settings to create paper notes."],
 	["settingFolderName", "Folder"],
@@ -64,8 +60,12 @@ const STRING_MAP: Map<string, string> = new Map([
 	["settingPdfDownloadName", "Download PDF"],
 	["settingPdfDownloadDesc", "Choose the path to download the PDF to."],
 	["settingPdfDownloadFolder", "(root of the vault)"],
+	["settingAddToBibFileName", "Save the BibTeX to"],
+	["settingAddToBibFileDesc", "Choose the .bib file to save the BibTeX to."],
+	["settingAddToBibFileTarget", ""],
 	["noticeRetrievingArxiv", "Retrieving paper information from arXiv API."],
 	["noticeRetrievingSS", "Retrieving paper information from Semantic Scholar API."],
+	["noticeNotBibFile", "The file you selected is not a .bib file."],
 ]);
 
 function trimString(str: string | null): string {
@@ -79,7 +79,19 @@ interface PaperNoteFillerPluginSettings {
 	fileNaming: string;
 	templateLocation: string;
 	pdfDownloadLocation: string;
+	saveBibTex: boolean;
+	bibTexSaveFile: string;
 }
+
+const DEFAULT_SETTINGS: PaperNoteFillerPluginSettings = {
+	folderLocation: "",
+	fileNaming: NAMING_TYPES[0],
+	templateLocation: "",
+	pdfDownloadLocation: "",
+	saveBibTex: false,
+	bibTexSaveFile: "",
+};
+
 
 interface StructuredPaperData {
 	title: string;
@@ -90,6 +102,7 @@ interface StructuredPaperData {
 	publicationDate?: string;
 	tags?: string[];
 	pdfPath?: string;
+	bibtex?: string;
 }
 
 export function getDate(input?: { format?: string; offset?: number }) {
@@ -106,6 +119,12 @@ export function getDate(input?: { format?: string; offset?: number }) {
 	return input?.format
 		? window.moment().add(duration).format(input.format)
 		: window.moment().add(duration).format("YYYY-MM-DD");
+}
+
+export async function getArxivBibtex(arxivId: string) {
+    const bibtexText = await request(STRING_MAP.get("arXivBibTexAPI")! + arxivId);
+	// console.log(bibtexText);
+    return bibtexText;
 }
 
 export default class PaperNoteFillerPlugin extends Plugin {
@@ -321,6 +340,42 @@ class urlModal extends Modal {
 		});
 	}
 
+	async saveBibTex(bibtex: string) {
+		if (this.settings.saveBibTex === false) {
+			return;
+		}
+
+		let bibTexPath = this.settings.bibTexSaveFile;
+		if (bibTexPath === "") {
+			new Notice("BibTex location is not set in the settings.");
+			return;
+		}
+		
+		let bibtexText = "";
+		if (await this.app.vault.adapter.exists(bibTexPath)) {
+			let bibtexText = await this.app.vault.adapter.read(bibTexPath);
+			if (bibtexText.includes(bibtex)) {
+				new Notice("BibTex entry already exists.");
+				return;
+			}
+		}
+
+		let bibtextFile = this.app.vault.getAbstractFileByPath(bibTexPath);
+		if (bibtextFile == null || !(bibtextFile instanceof TFile)) {
+			new Notice("BibTex file not found.");
+			return;
+		}
+		this.app.vault
+			.append(bibtextFile as TFile, 
+					bibtex + "\n\n" + bibtexText)
+			.then(() => {
+				new Notice("BibTex entry saved.");
+			})
+			.catch((error) => {
+				new Notice("Error: " + error);
+			});
+	}
+
 	//both arxiv and aclanthology papers can be queried via the Semantic Scholar API
 	extractFromSemanticScholar(url: string) {
 
@@ -374,10 +429,12 @@ class urlModal extends Modal {
 				if (json["externalIds"] && json["externalIds"]["ACL]"]) {
 					semanticScholarURL += "\n" + "https://aclanthology.org/" + json.externalIds["ACL"];
 				}
+				
 				let pdfUrl = ""; 
 				if (json["isOpenAccess"] && json["isOpenAccess"] === true) {
 					pdfUrl = json['openAccessPdf']['url'];
 				}
+				let bibtex = json["citationStyles"]?.bibtex ? json["citationStyles"]['bibxtext'] : "";
 
 				let pathToFile = this.settings.folderLocation +
 					path.sep +
@@ -394,7 +451,10 @@ class urlModal extends Modal {
 					publicationDate: trimString(publicationDate),
 					abstract: trimString(abstract),
 					pdfPath: pdfPath,
+					bibtex: bibtex,
 				}, pathToFile);
+
+				await this.saveBibTex(bibtex);
 			})
 			.catch((error) => {
 				//convert the Notice to a notice with a red background
@@ -443,6 +503,8 @@ class urlModal extends Modal {
 				let filename = this.extractFileNameFromUrl(url, title);
 				let pdfUrl = xmlDoc.querySelector('link[title="pdf"]')?.getAttribute('href');
 
+				let bibtex = await getArxivBibtex(id);
+
 				let pathToFile = this.settings.folderLocation +
 					path.sep +
 					filename +
@@ -457,7 +519,10 @@ class urlModal extends Modal {
 					publicationDate: trimString(date),
 					abstract: trimString(abstract),
 					pdfPath: pdfPath,
+					bibtex: bibtex,
 				}, pathToFile);
+
+				await this.saveBibTex(bibtex);
 			})
 			.catch((error) => {
 				//convert the Notice to a notice with a red background
@@ -579,6 +644,17 @@ class SettingTab extends PluginSettingTab {
 		pdfDownloadFolderOptions[""] = STRING_MAP.get("settingPdfDownloadFolder")!;
 
 
+		let bibTexSaveOption: Record<string, string> = {};
+		// this.app.vault
+		// 	.getMarkdownFiles()
+		// 	.map((file) => file.path)
+		// 	.filter((filePath) => filePath.endsWith(".bib"))
+		// 	
+		files.forEach((record) => {
+				bibTexSaveOption[record] = record;
+		});
+		bibTexSaveOption[""] = "";
+
 		new Setting(containerEl)
 			.setName(STRING_MAP.get("settingFolderName")!)
 			.setDesc(STRING_MAP.get("settingFolderDesc")!)
@@ -631,5 +707,62 @@ class SettingTab extends PluginSettingTab {
 				}
 				)
 			);
+
+		new Setting(containerEl)
+			.setName("Save BibTex?")
+			.addToggle((toggle) =>
+				toggle
+				.setValue(this.plugin.settings.saveBibTex)
+				.onChange(async (value) => {
+					this.plugin.settings.saveBibTex = value;
+					await this.plugin.saveSettings();
+
+					if (value) {
+                        // Show command and another setting
+						new Setting(containerEl)
+						.setName(STRING_MAP.get("settingAddToBibFileName")!)
+						.setDesc(STRING_MAP.get("settingAddToBibFileDesc")!)
+						.addDropdown((dropdown) =>
+							dropdown
+							.addOptions(bibTexSaveOption)
+							.setValue(this.plugin.settings.bibTexSaveFile)
+							.onChange(async (value) => {
+								// make sure the file is a .bib file
+								// if (!value.endsWith(".bib")) {
+								// 	new Notice(STRING_MAP.get("noticeNotBibFile")!);
+								// 	return;
+								// }
+								this.plugin.settings.bibTexSaveFile = value;
+								await this.plugin.saveSettings();
+							}
+							)
+						);
+					} else {
+						// Hide command and another setting
+						containerEl.removeChild(containerEl.lastChild!);
+					}
+				})
+			);
+		
+		if (this.plugin.settings.saveBibTex) {
+			new Setting(containerEl)
+			.setName(STRING_MAP.get("settingAddToBibFileName")!)
+			.setDesc(STRING_MAP.get("settingAddToBibFileDesc")!)
+			.addDropdown((dropdown) =>
+				dropdown
+				.addOptions(bibTexSaveOption)
+				.setValue(this.plugin.settings.bibTexSaveFile)
+				.onChange(async (value) => {
+					// make sure the file is a .bib file
+					// if (!value.endsWith(".bib")) {
+					// 	new Notice(STRING_MAP.get("noticeNotBibFile")!);
+					// 	return;
+					// }
+					this.plugin.settings.bibTexSaveFile = value;
+					await this.plugin.saveSettings();
+				}
+				)
+			);
+		}
 	}
 }
