@@ -259,9 +259,8 @@ class urlModal extends Modal {
 		template = template.replace(/{{tags}}/g, paperData?.tags && paperData.tags.join(", ") || "");
 		
 		// Replace for pdf file 
-		if (paperData?.pdfPath) {
-			template = template.replace(/{{pdf}}/g, `[[${paperData.pdfPath}]]`);
-		}
+		template = template.replace(/{{pdf}}/g, paperData.pdfPath ? `[[${paperData.pdfPath}]]`: "");
+		
 		return template;
 	}
 
