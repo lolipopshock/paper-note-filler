@@ -5,6 +5,8 @@ import {
 	Plugin,
 	PluginSettingTab,
 	Setting,
+	TFile,
+	requestUrl,
 } from "obsidian";
 
 import { stopwords } from "./english-stopwords";
@@ -23,6 +25,8 @@ const NAMING_TYPES: string[] = [
 const DEFAULT_SETTINGS: PaperNoteFillerPluginSettings = {
 	folderLocation: "",
 	fileNaming: NAMING_TYPES[0],
+	templateLocation: "",
+	pdfDownloadLocation: "",
 };
 
 //create a string map for all the strings we need
@@ -46,7 +50,7 @@ const STRING_MAP: Map<string, string> = new Map([
 	["inputPlaceholder", "https://my-url.com"],
 	["arxivUrlSuffix", "arXiv:"],
 	["aclAnthologyUrlSuffix", "ACL:"],
-	["semanticScholarFields", "fields=authors,title,abstract,url,venue,year,publicationDate,externalIds"],
+	["semanticScholarFields", "fields=authors,title,abstract,url,venue,year,publicationDate,externalIds,isOpenAccess,openAccessPdf"],
 	["semanticScholarAPI", "https://api.semanticscholar.org/graph/v1/paper/"],
 	["settingHeader", "Settings to create paper notes."],
 	["settingFolderName", "Folder"],
@@ -54,6 +58,12 @@ const STRING_MAP: Map<string, string> = new Map([
 	["settingFolderRoot", "(root of the vault)"],
 	["settingNoteName", "Note naming"],
 	["settingNoteDesc", "Method to name the note."],
+	["settingTemplateName", "Template"],
+	["settingTemplateDesc", "Use the default paper template or you own template."],
+	["settingTemplateFolder", "template"],
+	["settingPdfDownloadName", "Download PDF"],
+	["settingPdfDownloadDesc", "Choose the path to download the PDF to."],
+	["settingPdfDownloadFolder", "(root of the vault)"],
 	["noticeRetrievingArxiv", "Retrieving paper information from arXiv API."],
 	["noticeRetrievingSS", "Retrieving paper information from Semantic Scholar API."],
 ]);
@@ -67,6 +77,35 @@ function trimString(str: string | null): string {
 interface PaperNoteFillerPluginSettings {
 	folderLocation: string;
 	fileNaming: string;
+	templateLocation: string;
+	pdfDownloadLocation: string;
+}
+
+interface StructuredPaperData {
+	title: string;
+	authors: string[];
+	abstract: string;
+	url?: string;
+	venue?: string;
+	publicationDate?: string;
+	tags?: string[];
+	pdfPath?: string;
+}
+
+export function getDate(input?: { format?: string; offset?: number }) {
+	let duration;
+
+	if (
+		input?.offset !== null &&
+		input?.offset !== undefined &&
+		typeof input.offset === "number"
+	) {
+		duration = window.moment.duration(input.offset, "days");
+	}
+
+	return input?.format
+		? window.moment().add(duration).format(input.format)
+		: window.moment().add(duration).format("YYYY-MM-DD");
 }
 
 export default class PaperNoteFillerPlugin extends Plugin {
@@ -166,6 +205,123 @@ class urlModal extends Modal {
 		return filename;
 	}
 
+	async createFileWithTemplate(paperData: StructuredPaperData, templatePath?: string) {
+		let template = "";
+		let templateFile = this.app.vault.getAbstractFileByPath(this.settings.templateLocation);
+		if (templateFile != null && templateFile instanceof TFile) {
+			template = await this.app.vault.cachedRead(templateFile as TFile);	
+		} else {
+			template = "# Title" +
+			"\n" +
+			"{{title}}" +
+			"\n\n" +
+			"# Authors" +
+			"\n" +
+			"{{authors}}" +
+			"\n\n" +
+			"# URL" +
+			"\n" +
+			"{{url}}" +
+			"\n\n" +
+			"# Venue" +
+			"\n" +
+			"{{venue}}" +
+			"\n\n" +
+			"# Publication date" +
+			"\n" +
+			"{{publicationDate}}" +
+			"\n\n" +
+			"# Abstract" +
+			"\n" +
+			"{{abstract}}" +
+			"\n\n" +
+			"# Tags" +
+			"{{tags}}"
+			"\n\n\n" +
+			"# Notes" +
+			"\n"
+		}
+	
+		// Replace for time information 
+		template = template.replace(/{{date}}/g, getDate({ format: "YYYY-MM-DD" }));
+		template = template.replace(/{{time}}/g, getDate({ format: "HH:mm" }));
+		
+		template = template.replace(/{{date:(.*?)}}/g, (_, format) => getDate({ format }));
+		template = template.replace(/{{time:(.*?)}}/g, (_, format) => getDate({ format }));
+		
+		// Replace for paper metadata
+		template = template.replace(/{{title}}/g, paperData.title);
+		template = template.replace(/{{authors}}/g, paperData.authors.join(", "));
+		template = template.replace(/{{abstract}}/g, paperData.abstract);
+		template = template.replace(/{{url}}/g, paperData.url || "");
+		template = template.replace(/{{venue}}/g, paperData.venue || "");
+		template = template.replace(/{{publicationDate}}/g, paperData.publicationDate || "");
+		template = template.replace(/{{tags}}/g, paperData?.tags && paperData.tags.join(", ") || "");
+		
+		// Replace for pdf file 
+		if (paperData?.pdfPath) {
+			template = template.replace(/{{pdf}}/g, `[[${paperData.pdfPath}]]`);
+		}
+		return template;
+	}
+
+	async createFileFromPaperData(paperData: StructuredPaperData, pathToFile: string) {
+
+		let template = await this.createFileWithTemplate(paperData);
+		
+		//notification if the file already exists
+		if (await this.app.vault.adapter.exists(pathToFile)) {
+			new Notice(
+				STRING_MAP.get("fileAlreadyExists") + ""
+			);
+			this.app.workspace.openLinkText(
+				pathToFile,
+				pathToFile
+			);
+		} else {
+			await this.app.vault
+				.create(
+					pathToFile,
+					template
+				)
+				.then(() => {
+					this.app.workspace.openLinkText(
+						pathToFile,
+						pathToFile
+					);
+				});
+		}
+	}
+
+	async downloadPdf(pdfUrl: string | undefined | null, filename: string): Promise<string> {
+		return new Promise(async (resolve, reject) => {
+			
+			// Check if pdfUrl is undefined or null
+			if (!pdfUrl) {
+				reject("pdfUrl is undefined or null");
+				return;
+			}
+			
+			let pdfDownloadFolder = this.settings.pdfDownloadLocation;
+			let pdfSavePath = pdfDownloadFolder + path.sep + filename + ".pdf"
+		
+			// Check if the pdf already exists
+			if (await this.app.vault.adapter.exists(pdfSavePath)) {
+				resolve(pdfSavePath);
+				return;
+			}
+
+			requestUrl({
+				url: pdfUrl,
+				method: 'GET',
+			}).arrayBuffer.then(arrayBuffer => {
+				this.app.vault.createBinary(pdfSavePath, arrayBuffer)
+				.then(() => resolve(pdfSavePath))
+				.catch(reject);
+			}).catch(reject);
+		});
+	}
+
 	//both arxiv and aclanthology papers can be queried via the Semantic Scholar API
 	extractFromSemanticScholar(url: string) {
 
@@ -202,13 +358,6 @@ class urlModal extends Modal {
 				let abstract = json.abstract;
 
 				let authors = json.authors;
-				let authorString = "";
-				for (let i = 0; i < authors.length; i++) {
-					if (i > 0) {
-						authorString += ", ";
-					}
-					authorString += authors[i].name;
-				}
 
 				let venue = "";
 				if (json.venue != null && json.venue != "")
@@ -226,61 +375,27 @@ class urlModal extends Modal {
 				if (json["externalIds"] && json["externalIds"]["ACL]"]) {
 					semanticScholarURL += "\n" + "https://aclanthology.org/" + json.externalIds["ACL"];
 				}
+				let pdfUrl = ""; 
+				if (json["isOpenAccess"] && json["isOpenAccess"] === true) {
+					pdfUrl = json['openAccessPdf']['url'];
+				}
 
 				let pathToFile = this.settings.folderLocation +
 					path.sep +
 					filename +
 					".md";
+				
+				let pdfPath = await this.downloadPdf(pdfUrl, filename);
 
-				//notification if the file already exists
-				if (await this.app.vault.adapter.exists(pathToFile)) {
-					new Notice(
-						STRING_MAP.get("fileAlreadyExists") + ""
-					);
-					this.app.workspace.openLinkText(
-						pathToFile,
-						pathToFile
-					);
-				} else {
-					await this.app.vault
-						.create(
-							pathToFile,
-							"# Title" +
-							"\n" +
-							trimString(title) +
-							"\n\n" +
-							"# Authors" +
-							"\n" +
-							trimString(authorString) +
-							"\n\n" +
-							"# URL" +
-							"\n" +
-							semanticScholarURL +
-							"\n\n" +
-							"# Venue" +
-							"\n" +
-							trimString(venue) +
-							"\n\n" +
-							"# Publication date" +
-							"\n" +
-							trimString(publicationDate) +
-							"\n\n" +
-							"# Abstract" +
-							"\n" +
-							trimString(abstract) +
-							"\n\n" +
-							"# Tags" +
-							"\n\n\n" +
-							"# Notes" +
-							"\n"
-						)
-						.then(() => {
-							this.app.workspace.openLinkText(
-								pathToFile,
-								pathToFile
-							);
-						});
-				}
+				await this.createFileFromPaperData({
+					title: trimString(title),
+					authors: authors,
+					venue: trimString(venue),
+					url: semanticScholarURL,
+					publicationDate: trimString(publicationDate),
+					abstract: trimString(abstract),
+					pdfPath: pdfPath,
+				}, pathToFile);
 			})
 			.catch((error) => {
 				//convert the Notice to a notice with a red background
@@ -292,7 +407,6 @@ class urlModal extends Modal {
 				this.close();
 			});
 	}
-
 
 	//if semantic scholar misses, we try arxiv
 	extractFromArxiv(url: string) {
@@ -328,59 +442,23 @@ class urlModal extends Modal {
 
 				if (title == null) title = "undefined";
 				let filename = this.extractFileNameFromUrl(url, title);
+				let pdfUrl = xmlDoc.querySelector('link[title="pdf"]')?.getAttribute('href');
 
 				let pathToFile = this.settings.folderLocation +
 					path.sep +
 					filename +
 					".md";
+				
+				let pdfPath = await this.downloadPdf(pdfUrl, filename);
 
-				//notification if the file already exists
-				if (await this.app.vault.adapter.exists(pathToFile)) {
-					new Notice(
-						STRING_MAP.get("fileAlreadyExists") + ""
-					);
-					this.app.workspace.openLinkText(
-						pathToFile,
-						pathToFile
-					);
-				} else {
-					await this.app.vault
-						.create(
-							pathToFile,
-							"# Title" +
-							"\n" +
-							trimString(title) +
-							"\n\n" +
-							"# Authors" +
-							"\n" +
-							trimString(authorString) +
-							"\n\n" +
-							"# URL" +
-							"\n" +
-							trimString(url) +
-							"\n\n" +
-							"# Venue" +
-							"\n\n\n" +
-							"# Publication date" +
-							"\n" +
-							trimString(date) +
-							"\n\n" +
-							"# Abstract" +
-							"\n" +
-							trimString(abstract) +
-							"\n\n" +
-							"# Tags" +
-							"\n\n" +
-							"# Notes" +
-							"\n\n"
-						)
-						.then(() => {
-							this.app.workspace.openLinkText(
-								pathToFile,
-								pathToFile
-							);
-						});
-				}
+				await this.createFileFromPaperData({
+					title: trimString(title),
+					authors: authorString.split(", "),
+					url: trimString(url),
+					publicationDate: trimString(date),
+					abstract: trimString(abstract),
+					pdfPath: pdfPath,
+				}, pathToFile);
 			})
 			.catch((error) => {
 				//convert the Notice to a notice with a red background
@@ -485,6 +563,23 @@ class SettingTab extends PluginSettingTab {
 			namingOptions[record] = record;
 		});
 
+		let files = this.app.vault
+			.getMarkdownFiles()
+			.map((file) => file.path);
+		let templateOptions: Record<string, string> = {};
+		files.forEach((record) => {
+			templateOptions[record] = record;
+		});
+		// templateOptions[""] = STRING_MAP.get("settingTemplateFolder")!;
+
+
+		let pdfDownloadFolderOptions: Record<string, string> = {};
+		folders.forEach((record) => {
+			pdfDownloadFolderOptions[record] = record;
+		});
+		pdfDownloadFolderOptions[""] = STRING_MAP.get("settingPdfDownloadFolder")!;
+
+
 		new Setting(containerEl)
 			.setName(STRING_MAP.get("settingFolderName")!)
 			.setDesc(STRING_MAP.get("settingFolderDesc")!)
@@ -509,6 +604,33 @@ class SettingTab extends PluginSettingTab {
 						this.plugin.settings.fileNaming = value;
 						await this.plugin.saveSettings();
 					})
+			);
+		new Setting(containerEl)
+			.setName(STRING_MAP.get("settingTemplateName")!)
+			.setDesc(STRING_MAP.get("settingTemplateDesc")!)
+			.addDropdown((dropdown) =>
+				dropdown
+				.addOptions(templateOptions)
+				.setValue(this.plugin.settings.templateLocation)
+				.onChange(async (value) => {
+					this.plugin.settings.templateLocation = value;
+					await this.plugin.saveSettings();
+				}
+				)
+			);
+
+		new Setting(containerEl)
+			.setName(STRING_MAP.get("settingPdfDownloadName")!)
+			.setDesc(STRING_MAP.get("settingPdfDownloadDesc")!)
+			.addDropdown((dropdown) =>
+				dropdown
+				.addOptions(pdfDownloadFolderOptions)
+				.setValue(this.plugin.settings.pdfDownloadLocation)
+				.onChange(async (value) => {
+					this.plugin.settings.pdfDownloadLocation = value;
+					await this.plugin.saveSettings();
+				}
+				)
 			);
 	}
 }
