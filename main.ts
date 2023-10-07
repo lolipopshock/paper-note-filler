@@ -23,11 +23,11 @@ const NAMING_TYPES: string[] = [
 	"all-title-terms",
 ];
 
-
 //create a string map for all the strings we need
 const STRING_MAP: Map<string, string> = new Map([
 	[
-		"error", "Something went wrong. Check the Obsidian console if the error persists."
+		"error",
+		"Something went wrong. Check the Obsidian console if the error persists.",
 	],
 	["unsupportedUrl", "This URL is not supported. You tried to enter: "],
 	[
@@ -42,11 +42,17 @@ const STRING_MAP: Map<string, string> = new Map([
 	["arXivRestAPI", "https://export.arxiv.org/api/query?id_list="],
 	["aclAnthologyUrlExample", "https://aclanthology.org/2022.acl-long.1/"],
 	["arXivUrlExample", "https://arxiv.org/abs/0000.00000"],
-	["semanticScholarUrlExample", "https://www.semanticscholar.org/paper/some-text/0000.00000"],
+	[
+		"semanticScholarUrlExample",
+		"https://www.semanticscholar.org/paper/some-text/0000.00000",
+	],
 	["inputPlaceholder", "https://my-url.com"],
 	["arxivUrlSuffix", "arXiv:"],
 	["aclAnthologyUrlSuffix", "ACL:"],
-	["semanticScholarFields", "fields=authors,title,abstract,url,venue,year,publicationDate,externalIds,isOpenAccess,openAccessPdf,citationStyles"],
+	[
+		"semanticScholarFields",
+		"fields=authors,title,abstract,url,venue,year,publicationDate,externalIds,isOpenAccess,openAccessPdf,citationStyles",
+	],
 	["semanticScholarAPI", "https://api.semanticscholar.org/graph/v1/paper/"],
 	["settingHeader", "Settings to create paper notes."],
 	["settingFolderName", "Folder"],
@@ -55,7 +61,10 @@ const STRING_MAP: Map<string, string> = new Map([
 	["settingNoteName", "Note naming"],
 	["settingNoteDesc", "Method to name the note."],
 	["settingTemplateName", "Template"],
-	["settingTemplateDesc", "Use the default paper template or you own template."],
+	[
+		"settingTemplateDesc",
+		"Use the default paper template or you own template.",
+	],
 	["settingTemplateFolder", "template"],
 	["settingPdfDownloadName", "Download PDF"],
 	["settingPdfDownloadDesc", "Choose the path to download the PDF to."],
@@ -64,7 +73,10 @@ const STRING_MAP: Map<string, string> = new Map([
 	["settingAddToBibFileDesc", "Choose the .bib file to save the BibTeX to."],
 	["settingAddToBibFileTarget", ""],
 	["noticeRetrievingArxiv", "Retrieving paper information from arXiv API."],
-	["noticeRetrievingSS", "Retrieving paper information from Semantic Scholar API."],
+	[
+		"noticeRetrievingSS",
+		"Retrieving paper information from Semantic Scholar API.",
+	],
 	["noticeNotBibFile", "The file you selected is not a .bib file."],
 ]);
 
@@ -91,7 +103,6 @@ const DEFAULT_SETTINGS: PaperNoteFillerPluginSettings = {
 	saveBibTex: false,
 	bibTexSaveFile: "",
 };
-
 
 interface StructuredPaperData {
 	title: string;
@@ -122,16 +133,17 @@ export function getDate(input?: { format?: string; offset?: number }) {
 }
 
 export async function getArxivBibtex(arxivId: string) {
-    const bibtexText = await request(STRING_MAP.get("arXivBibTexAPI")! + arxivId);
+	const bibtexText = await request(
+		STRING_MAP.get("arXivBibTexAPI")! + arxivId
+	);
 	// console.log(bibtexText);
-    return bibtexText;
+	return bibtexText;
 }
 
-export function getCiteKey(bibtex:string) {
-    const match = bibtex.match(/@.*\{([^,]+)/);
-    return match ? match[1] : null;
+export function getCiteKey(bibtex: string) {
+	const match = bibtex.match(/@.*\{([^,]+)/);
+	return match ? match[1] : null;
 }
-
 
 export default class PaperNoteFillerPlugin extends Plugin {
 	settings: PaperNoteFillerPluginSettings;
@@ -152,7 +164,7 @@ export default class PaperNoteFillerPlugin extends Plugin {
 		this.addSettingTab(new SettingTab(this.app, this));
 	}
 
-	onunload() { }
+	onunload() {}
 
 	async loadSettings() {
 		this.settings = Object.assign(
@@ -175,7 +187,10 @@ class urlModal extends Modal {
 		this.settings = settings;
 	}
 
-	addTextElementToModal(type: keyof HTMLElementTagNameMap, value: string): void {
+	addTextElementToModal(
+		type: keyof HTMLElementTagNameMap,
+		value: string
+	): void {
 		const { contentEl } = this;
 		contentEl.createEl(type, { text: value });
 	}
@@ -186,42 +201,37 @@ class urlModal extends Modal {
 		return input;
 	}
 
-	addPropertyToElement(element: HTMLElement, property: string, value: string): void {
+	addPropertyToElement(
+		element: HTMLElement,
+		property: string,
+		value: string
+	): void {
 		element.setAttribute(property, value);
 	}
 
 	getIdentifierFromUrl(url: string): string {
 		//if url ends in / remove it
-		if (url.endsWith("/"))
-			url = url.slice(0, -1);
+		if (url.endsWith("/")) url = url.slice(0, -1);
 		return url.split("/").slice(-1)[0];
 	}
 
 	extractFileNameFromUrl(url: string, title: string): string {
-
 		let filename = this.getIdentifierFromUrl(url);
 
-		if (this.settings.fileNaming !== "identifier" &&
-			title != null) {
+		if (this.settings.fileNaming !== "identifier" && title != null) {
 			let sliceEnd = undefined; //default to all terms
-			if (this.settings.fileNaming.includes(
-				"first-3-title-terms"
-			))
+			if (this.settings.fileNaming.includes("first-3-title-terms"))
 				sliceEnd = 3;
-			else if (this.settings.fileNaming.includes(
-				"first-5-title-terms"
-			))
+			else if (this.settings.fileNaming.includes("first-5-title-terms"))
 				sliceEnd = 5;
-			else
-				;
+			else;
 
 			filename = title
 				.split(" ")
 				.filter(
-					(word) => !stopwords.has(word.toLowerCase()) ||
-						!this.settings.fileNaming.includes(
-							"no-stopwords"
-						)
+					(word) =>
+						!stopwords.has(word.toLowerCase()) ||
+						!this.settings.fileNaming.includes("no-stopwords")
 				)
 				.slice(0, sliceEnd)
 				.join(" ")
@@ -230,111 +240,125 @@ class urlModal extends Modal {
 		return filename;
 	}
 
-	async createFileWithTemplate(paperData: StructuredPaperData, templatePath?: string) {
+	async createFileWithTemplate(
+		paperData: StructuredPaperData,
+		templatePath?: string
+	) {
 		let template = "";
-		let templateFile = this.app.vault.getAbstractFileByPath(this.settings.templateLocation);
+		let templateFile = this.app.vault.getAbstractFileByPath(
+			this.settings.templateLocation
+		);
 		if (templateFile != null && templateFile instanceof TFile) {
-			template = await this.app.vault.cachedRead(templateFile as TFile);	
+			template = await this.app.vault.cachedRead(templateFile as TFile);
 		} else {
-			template = "# Title" +
-			"\n" +
-			"{{title}}" +
-			"\n\n" +
-			"# Authors" +
-			"\n" +
-			"{{authors}}" +
-			"\n\n" +
-			"# URL" +
-			"\n" +
-			"{{url}}" +
-			"\n\n" +
-			"# Venue" +
-			"\n" +
-			"{{venue}}" +
-			"\n\n" +
-			"# Publication date" +
-			"\n" +
-			"{{publicationDate}}" +
-			"\n\n" +
-			"# Abstract" +
-			"\n" +
-			"{{abstract}}" +
-			"\n\n" +
-			"# Tags" +
-			"{{tags}}"
-			"\n\n\n" +
-			"# Notes" +
-			"\n"
+			template =
+				"# Title" +
+				"\n" +
+				"{{title}}" +
+				"\n\n" +
+				"# Authors" +
+				"\n" +
+				"{{authors}}" +
+				"\n\n" +
+				"# URL" +
+				"\n" +
+				"{{url}}" +
+				"\n\n" +
+				"# Venue" +
+				"\n" +
+				"{{venue}}" +
+				"\n\n" +
+				"# Publication date" +
+				"\n" +
+				"{{publicationDate}}" +
+				"\n\n" +
+				"# Abstract" +
+				"\n" +
+				"{{abstract}}" +
+				"\n\n" +
+				"# Tags" +
+				"{{tags}}";
+			"\n\n\n" + "# Notes" + "\n";
 		}
-	
-		// Replace for time information 
-		template = template.replace(/{{date}}/g, getDate({ format: "YYYY-MM-DD" }));
+
+		// Replace for time information
+		template = template.replace(
+			/{{date}}/g,
+			getDate({ format: "YYYY-MM-DD" })
+		);
 		template = template.replace(/{{time}}/g, getDate({ format: "HH:mm" }));
-		
-		template = template.replace(/{{date:(.*?)}}/g, (_, format) => getDate({ format }));
-		template = template.replace(/{{time:(.*?)}}/g, (_, format) => getDate({ format }));
-		
+
+		template = template.replace(/{{date:(.*?)}}/g, (_, format) =>
+			getDate({ format })
+		);
+		template = template.replace(/{{time:(.*?)}}/g, (_, format) =>
+			getDate({ format })
+		);
+
 		// Replace for paper metadata
 		template = template.replace(/{{title}}/g, paperData.title);
-		template = template.replace(/{{authors}}/g, paperData.authors.join(", "));
+		template = template.replace(
+			/{{authors}}/g,
+			paperData.authors.join(", ")
+		);
 		template = template.replace(/{{abstract}}/g, paperData.abstract);
 		template = template.replace(/{{url}}/g, paperData.url || "");
 		template = template.replace(/{{venue}}/g, paperData.venue || "");
-		template = template.replace(/{{publicationDate}}/g, paperData.publicationDate || "");
-		template = template.replace(/{{tags}}/g, paperData?.tags && paperData.tags.join(", ") || "");
-		
-		// Replace for pdf file 
-		template = template.replace(/{{pdf}}/g, paperData.pdfPath ? `[[${paperData.pdfPath}]]`: "");
-	
+		template = template.replace(
+			/{{publicationDate}}/g,
+			paperData.publicationDate || ""
+		);
+		template = template.replace(
+			/{{tags}}/g,
+			(paperData?.tags && paperData.tags.join(", ")) || ""
+		);
+
+		// Replace for pdf file
+		template = template.replace(
+			/{{pdf}}/g,
+			paperData.pdfPath ? `[[${paperData.pdfPath}]]` : ""
+		);
+
 		let citeKey = paperData.bibtex ? getCiteKey(paperData.bibtex) : null;
 		if (citeKey) {
-			// we perhaps should keep the citekey in the template when 
+			// we perhaps should keep the citekey in the template when
 			// the the bibtex is not available
 			template = template.replace(/{{citekey}}/g, citeKey);
 		}
 		return template;
 	}
 
-	async createFileFromPaperData(paperData: StructuredPaperData, pathToFile: string) {
-
+	async createFileFromPaperData(
+		paperData: StructuredPaperData,
+		pathToFile: string
+	) {
 		let template = await this.createFileWithTemplate(paperData);
-		
+
 		//notification if the file already exists
 		if (await this.app.vault.adapter.exists(pathToFile)) {
-			new Notice(
-				STRING_MAP.get("fileAlreadyExists") + ""
-			);
-			this.app.workspace.openLinkText(
-				pathToFile,
-				pathToFile
-			);
+			new Notice(STRING_MAP.get("fileAlreadyExists") + "");
+			this.app.workspace.openLinkText(pathToFile, pathToFile);
 		} else {
-			await this.app.vault
-				.create(
-					pathToFile,
-					template
-				)
-				.then(() => {
-					this.app.workspace.openLinkText(
-						pathToFile,
-						pathToFile
-					);
-				});
+			await this.app.vault.create(pathToFile, template).then(() => {
+				this.app.workspace.openLinkText(pathToFile, pathToFile);
+			});
 		}
 	}
 
-	async downloadPdf(pdfUrl: string | undefined | null, filename: string): Promise<string> {
+	async downloadPdf(
+		pdfUrl: string | undefined | null,
+		filename: string
+	): Promise<string> {
 		return new Promise(async (resolve, reject) => {
-			
 			// Check if pdfUrl is undefined or null
 			if (!pdfUrl) {
 				reject("pdfUrl is undefined or null");
 				return;
 			}
-			
+
 			let pdfDownloadFolder = this.settings.pdfDownloadLocation;
-			let pdfSavePath = pdfDownloadFolder + path.sep + filename + ".pdf"
-		
+			let pdfSavePath = pdfDownloadFolder + path.sep + filename + ".pdf";
+
 			// Check if the pdf already exists
 			if (await this.app.vault.adapter.exists(pdfSavePath)) {
 				resolve(pdfSavePath);
@@ -343,12 +367,15 @@ class urlModal extends Modal {
 
 			requestUrl({
 				url: pdfUrl,
-				method: 'GET',
-			}).arrayBuffer.then(arrayBuffer => {
-				this.app.vault.createBinary(pdfSavePath, arrayBuffer)
-				.then(() => resolve(pdfSavePath))
+				method: "GET",
+			})
+				.arrayBuffer.then((arrayBuffer) => {
+					this.app.vault
+						.createBinary(pdfSavePath, arrayBuffer)
+						.then(() => resolve(pdfSavePath))
+						.catch(reject);
+				})
 				.catch(reject);
-			}).catch(reject);
 		});
 	}
 
@@ -362,7 +389,7 @@ class urlModal extends Modal {
 			new Notice("BibTex location is not set in the settings.");
 			return;
 		}
-		
+
 		let bibtexText = "";
 		if (await this.app.vault.adapter.exists(bibTexPath)) {
 			let bibtexText = await this.app.vault.adapter.read(bibTexPath);
@@ -378,8 +405,7 @@ class urlModal extends Modal {
 			return;
 		}
 		this.app.vault
-			.append(bibtextFile as TFile, 
-					bibtex + "\n\n" + bibtexText)
+			.append(bibtextFile as TFile, bibtex + "\n\n" + bibtexText)
 			.then(() => {
 				new Notice("BibTex entry saved.");
 			})
@@ -390,7 +416,6 @@ class urlModal extends Modal {
 
 	//both arxiv and aclanthology papers can be queried via the Semantic Scholar API
 	extractFromSemanticScholar(url: string) {
-
 		let id = this.getIdentifierFromUrl(url);
 		console.log("paper id: " + id);
 
@@ -399,20 +424,26 @@ class urlModal extends Modal {
 			suffix = STRING_MAP.get("arxivUrlSuffix")!;
 		else if (url.toLowerCase().includes("aclanthology"))
 			suffix = STRING_MAP.get("aclAnthologyUrlSuffix")!;
-		else if (url.toLowerCase().includes("semanticscholar"))
-			suffix = "";
+		else if (url.toLowerCase().includes("semanticscholar")) suffix = "";
 		else;
 
 		if (suffix === "INVALID") {
 			console.log("Invalid url: " + url);
-			new Notice("Error: For now, only semanticscholar, arxiv and anthology URLs are supported.");
+			new Notice(
+				"Error: For now, only semanticscholar, arxiv and anthology URLs are supported."
+			);
 			return;
 		}
 
-		fetch(STRING_MAP.get("semanticScholarAPI")! + suffix + id + "?" + STRING_MAP.get("semanticScholarFields")!)
+		fetch(
+			STRING_MAP.get("semanticScholarAPI")! +
+				suffix +
+				id +
+				"?" +
+				STRING_MAP.get("semanticScholarFields")!
+		)
 			.then((response) => response.text())
 			.then(async (data) => {
-
 				let json = JSON.parse(data);
 
 				if (json.error != null) {
@@ -436,35 +467,44 @@ class urlModal extends Modal {
 
 				let semanticScholarURL = json.url;
 				if (json["externalIds"] && json["externalIds"]["ArXiv"]) {
-					semanticScholarURL += "\n" + "https://arxiv.org/abs/" + json.externalIds["ArXiv"];
+					semanticScholarURL +=
+						"\n" +
+						"https://arxiv.org/abs/" +
+						json.externalIds["ArXiv"];
 				}
 				if (json["externalIds"] && json["externalIds"]["ACL]"]) {
-					semanticScholarURL += "\n" + "https://aclanthology.org/" + json.externalIds["ACL"];
+					semanticScholarURL +=
+						"\n" +
+						"https://aclanthology.org/" +
+						json.externalIds["ACL"];
 				}
-				
-				let pdfUrl = ""; 
-				if (json["isOpenAccess"] && json["isOpenAccess"] === true) {
-					pdfUrl = json['openAccessPdf']['url'];
-				}
-				let bibtex = json["citationStyles"]?.bibtex ? json["citationStyles"]['bibxtext'] : "";
 
-				let pathToFile = this.settings.folderLocation +
-					path.sep +
-					filename +
-					".md";
-				
+				let pdfUrl = "";
+				if (json["isOpenAccess"] && json["isOpenAccess"] === true) {
+					pdfUrl = json["openAccessPdf"]["url"];
+				}
+				let bibtex = json["citationStyles"]?.bibtex
+					? json["citationStyles"]["bibxtext"]
+					: "";
+
+				let pathToFile =
+					this.settings.folderLocation + path.sep + filename + ".md";
+
 				let pdfPath = await this.downloadPdf(pdfUrl, filename);
 
-				await this.createFileFromPaperData({
-					title: trimString(title),
-					authors: authors,
-					venue: trimString(venue),
-					url: semanticScholarURL,
-					publicationDate: trimString(publicationDate),
-					abstract: trimString(abstract),
-					pdfPath: pdfPath,
-					bibtex: bibtex,
-				}, pathToFile);
+				await this.createFileFromPaperData(
+					{
+						title: trimString(title),
+						authors: authors,
+						venue: trimString(venue),
+						url: semanticScholarURL,
+						publicationDate: trimString(publicationDate),
+						abstract: trimString(abstract),
+						pdfPath: pdfPath,
+						bibtex: bibtex,
+					},
+					pathToFile
+				);
 
 				await this.saveBibTex(bibtex);
 			})
@@ -481,7 +521,6 @@ class urlModal extends Modal {
 
 	//if semantic scholar misses, we try arxiv
 	extractFromArxiv(url: string) {
-
 		let id = this.getIdentifierFromUrl(url);
 
 		fetch(STRING_MAP.get("arXivRestAPI")! + id)
@@ -491,11 +530,9 @@ class urlModal extends Modal {
 				let parser = new DOMParser();
 				let xmlDoc = parser.parseFromString(data, "text/xml");
 
-				let title =
-					xmlDoc.getElementsByTagName("title")[1].textContent;
+				let title = xmlDoc.getElementsByTagName("title")[1].textContent;
 				let abstract =
-					xmlDoc.getElementsByTagName("summary")[0]
-						.textContent;
+					xmlDoc.getElementsByTagName("summary")[0].textContent;
 				let authors = xmlDoc.getElementsByTagName("author");
 				let authorString = "";
 				for (let i = 0; i < authors.length; i++) {
@@ -503,36 +540,37 @@ class urlModal extends Modal {
 						authorString += ", ";
 					}
 					authorString +=
-						authors[i].getElementsByTagName("name")[0]
-							.textContent;
+						authors[i].getElementsByTagName("name")[0].textContent;
 				}
 				let date =
-					xmlDoc.getElementsByTagName("published")[0]
-						.textContent;
+					xmlDoc.getElementsByTagName("published")[0].textContent;
 				if (date) date = date.split("T")[0]; //make the date human-friendly
 
 				if (title == null) title = "undefined";
 				let filename = this.extractFileNameFromUrl(url, title);
-				let pdfUrl = xmlDoc.querySelector('link[title="pdf"]')?.getAttribute('href');
+				let pdfUrl = xmlDoc
+					.querySelector('link[title="pdf"]')
+					?.getAttribute("href");
 
 				let bibtex = await getArxivBibtex(id);
 
-				let pathToFile = this.settings.folderLocation +
-					path.sep +
-					filename +
-					".md";
-				
+				let pathToFile =
+					this.settings.folderLocation + path.sep + filename + ".md";
+
 				let pdfPath = await this.downloadPdf(pdfUrl, filename);
 
-				await this.createFileFromPaperData({
-					title: trimString(title),
-					authors: authorString.split(", "),
-					url: trimString(url),
-					publicationDate: trimString(date),
-					abstract: trimString(abstract),
-					pdfPath: pdfPath,
-					bibtex: bibtex,
-				}, pathToFile);
+				await this.createFileFromPaperData(
+					{
+						title: trimString(title),
+						authors: authorString.split(", "),
+						url: trimString(url),
+						publicationDate: trimString(date),
+						abstract: trimString(abstract),
+						pdfPath: pdfPath,
+						bibtex: bibtex,
+					},
+					pathToFile
+				);
 
 				await this.saveBibTex(bibtex);
 			})
@@ -552,14 +590,28 @@ class urlModal extends Modal {
 
 		this.addTextElementToModal("h2", STRING_MAP.get("inputLabel1")!);
 		this.addTextElementToModal("p", STRING_MAP.get("inputLabel2")!);
-		this.addTextElementToModal("p", STRING_MAP.get("aclAnthologyUrlExample")!);
+		this.addTextElementToModal(
+			"p",
+			STRING_MAP.get("aclAnthologyUrlExample")!
+		);
 		this.addTextElementToModal("p", STRING_MAP.get("arXivUrlExample")!);
-		this.addTextElementToModal("p", STRING_MAP.get("semanticScholarUrlExample")!);
+		this.addTextElementToModal(
+			"p",
+			STRING_MAP.get("semanticScholarUrlExample")!
+		);
 
 		let input = this.addInputElementToModal("input");
 		this.addPropertyToElement(input, "type", "search");
-		this.addPropertyToElement(input, "placeholder", STRING_MAP.get("inputPlaceholder")!);
-		this.addPropertyToElement(input, "minLength", STRING_MAP.get("inputPlaceholder")!);
+		this.addPropertyToElement(
+			input,
+			"placeholder",
+			STRING_MAP.get("inputPlaceholder")!
+		);
+		this.addPropertyToElement(
+			input,
+			"minLength",
+			STRING_MAP.get("inputPlaceholder")!
+		);
 		this.addPropertyToElement(input, "style", "width: 75%;");
 
 		let extracting = false;
@@ -577,8 +629,7 @@ class urlModal extends Modal {
 				if (url.includes("arxiv.org")) {
 					new Notice(STRING_MAP.get("noticeRetrievingArxiv")!);
 					this.extractFromArxiv(url);
-				}
-				else {
+				} else {
 					new Notice(STRING_MAP.get("noticeRetrievingSS")!);
 					this.extractFromSemanticScholar(url);
 				}
@@ -621,8 +672,7 @@ class SettingTab extends PluginSettingTab {
 					res.push(parts.slice(0, i + 1).join(path.sep));
 				}
 				return res;
-			}
-			)
+			})
 			.flat()
 			.filter((folder, index, self) => self.indexOf(folder) === index);
 
@@ -639,31 +689,29 @@ class SettingTab extends PluginSettingTab {
 			namingOptions[record] = record;
 		});
 
-		let files = this.app.vault
-			.getMarkdownFiles()
-			.map((file) => file.path);
+		let files = this.app.vault.getMarkdownFiles().map((file) => file.path);
 		let templateOptions: Record<string, string> = {};
 		files.forEach((record) => {
 			templateOptions[record] = record;
 		});
 		// templateOptions[""] = STRING_MAP.get("settingTemplateFolder")!;
 
-
 		let pdfDownloadFolderOptions: Record<string, string> = {};
 		folders.forEach((record) => {
 			pdfDownloadFolderOptions[record] = record;
 		});
-		pdfDownloadFolderOptions[""] = STRING_MAP.get("settingPdfDownloadFolder")!;
-
+		pdfDownloadFolderOptions[""] = STRING_MAP.get(
+			"settingPdfDownloadFolder"
+		)!;
 
 		let bibTexSaveOption: Record<string, string> = {};
 		// this.app.vault
 		// 	.getMarkdownFiles()
 		// 	.map((file) => file.path)
 		// 	.filter((filePath) => filePath.endsWith(".bib"))
-		// 	
+		//
 		files.forEach((record) => {
-				bibTexSaveOption[record] = record;
+			bibTexSaveOption[record] = record;
 		});
 		bibTexSaveOption[""] = "";
 
@@ -697,13 +745,12 @@ class SettingTab extends PluginSettingTab {
 			.setDesc(STRING_MAP.get("settingTemplateDesc")!)
 			.addDropdown((dropdown) =>
 				dropdown
-				.addOptions(templateOptions)
-				.setValue(this.plugin.settings.templateLocation)
-				.onChange(async (value) => {
-					this.plugin.settings.templateLocation = value;
-					await this.plugin.saveSettings();
-				}
-				)
+					.addOptions(templateOptions)
+					.setValue(this.plugin.settings.templateLocation)
+					.onChange(async (value) => {
+						this.plugin.settings.templateLocation = value;
+						await this.plugin.saveSettings();
+					})
 			);
 
 		new Setting(containerEl)
@@ -711,70 +758,68 @@ class SettingTab extends PluginSettingTab {
 			.setDesc(STRING_MAP.get("settingPdfDownloadDesc")!)
 			.addDropdown((dropdown) =>
 				dropdown
-				.addOptions(pdfDownloadFolderOptions)
-				.setValue(this.plugin.settings.pdfDownloadLocation)
-				.onChange(async (value) => {
-					this.plugin.settings.pdfDownloadLocation = value;
-					await this.plugin.saveSettings();
-				}
-				)
+					.addOptions(pdfDownloadFolderOptions)
+					.setValue(this.plugin.settings.pdfDownloadLocation)
+					.onChange(async (value) => {
+						this.plugin.settings.pdfDownloadLocation = value;
+						await this.plugin.saveSettings();
+					})
 			);
 
-		new Setting(containerEl)
-			.setName("Save BibTex?")
-			.addToggle((toggle) =>
-				toggle
+		new Setting(containerEl).setName("Save BibTex?").addToggle((toggle) =>
+			toggle
 				.setValue(this.plugin.settings.saveBibTex)
 				.onChange(async (value) => {
 					this.plugin.settings.saveBibTex = value;
 					await this.plugin.saveSettings();
 
 					if (value) {
-                        // Show command and another setting
+						// Show command and another setting
 						new Setting(containerEl)
-						.setName(STRING_MAP.get("settingAddToBibFileName")!)
-						.setDesc(STRING_MAP.get("settingAddToBibFileDesc")!)
-						.addDropdown((dropdown) =>
-							dropdown
-							.addOptions(bibTexSaveOption)
-							.setValue(this.plugin.settings.bibTexSaveFile)
-							.onChange(async (value) => {
-								// make sure the file is a .bib file
-								// if (!value.endsWith(".bib")) {
-								// 	new Notice(STRING_MAP.get("noticeNotBibFile")!);
-								// 	return;
-								// }
-								this.plugin.settings.bibTexSaveFile = value;
-								await this.plugin.saveSettings();
-							}
-							)
-						);
+							.setName(STRING_MAP.get("settingAddToBibFileName")!)
+							.setDesc(STRING_MAP.get("settingAddToBibFileDesc")!)
+							.addDropdown((dropdown) =>
+								dropdown
+									.addOptions(bibTexSaveOption)
+									.setValue(
+										this.plugin.settings.bibTexSaveFile
+									)
+									.onChange(async (value) => {
+										// make sure the file is a .bib file
+										// if (!value.endsWith(".bib")) {
+										// 	new Notice(STRING_MAP.get("noticeNotBibFile")!);
+										// 	return;
+										// }
+										this.plugin.settings.bibTexSaveFile =
+											value;
+										await this.plugin.saveSettings();
+									})
+							);
 					} else {
 						// Hide command and another setting
 						containerEl.removeChild(containerEl.lastChild!);
 					}
 				})
-			);
-		
+		);
+
 		if (this.plugin.settings.saveBibTex) {
 			new Setting(containerEl)
-			.setName(STRING_MAP.get("settingAddToBibFileName")!)
-			.setDesc(STRING_MAP.get("settingAddToBibFileDesc")!)
-			.addDropdown((dropdown) =>
-				dropdown
-				.addOptions(bibTexSaveOption)
-				.setValue(this.plugin.settings.bibTexSaveFile)
-				.onChange(async (value) => {
-					// make sure the file is a .bib file
-					// if (!value.endsWith(".bib")) {
-					// 	new Notice(STRING_MAP.get("noticeNotBibFile")!);
-					// 	return;
-					// }
-					this.plugin.settings.bibTexSaveFile = value;
-					await this.plugin.saveSettings();
-				}
-				)
-			);
+				.setName(STRING_MAP.get("settingAddToBibFileName")!)
+				.setDesc(STRING_MAP.get("settingAddToBibFileDesc")!)
+				.addDropdown((dropdown) =>
+					dropdown
+						.addOptions(bibTexSaveOption)
+						.setValue(this.plugin.settings.bibTexSaveFile)
+						.onChange(async (value) => {
+							// make sure the file is a .bib file
+							// if (!value.endsWith(".bib")) {
+							// 	new Notice(STRING_MAP.get("noticeNotBibFile")!);
+							// 	return;
+							// }
+							this.plugin.settings.bibTexSaveFile = value;
+							await this.plugin.saveSettings();
+						})
+				);
 		}
 	}
 }
