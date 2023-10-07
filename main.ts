@@ -162,6 +162,7 @@ export default class PaperNoteFillerPlugin extends Plugin {
 		});
 
 		this.addSettingTab(new SettingTab(this.app, this));
+		this.registerExtensions(["bib"], "markdown");
 	}
 
 	onunload() {}
